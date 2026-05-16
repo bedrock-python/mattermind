@@ -3,7 +3,8 @@
 [![CI](https://github.com/bedrock-python/mattermind/actions/workflows/ci.yml/badge.svg)](https://github.com/bedrock-python/mattermind/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/mattermind)](https://pypi.org/project/mattermind/)
 [![Python](https://img.shields.io/pypi/pyversions/mattermind)](https://pypi.org/project/mattermind/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![codecov](https://codecov.io/gh/bedrock-python/mattermind/branch/master/graph/badge.svg)](https://codecov.io/gh/bedrock-python/mattermind)
 [![Docs](https://img.shields.io/badge/docs-bedrock--python.github.io%2Fmattermind-blue)](https://bedrock-python.github.io/mattermind/)
 
 Ask natural-language questions about your Mattermost workspace using LLM tool-calling.
