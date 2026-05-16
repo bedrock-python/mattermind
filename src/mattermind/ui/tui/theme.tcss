@@ -1,0 +1,408 @@
+/* ================================================================
+   Mattermind TUI — Global Theme
+   ================================================================ */
+
+/* ── App shell ─────────────────────────────────────────────────── */
+
+Screen {
+    background: $background;
+    color: $text;
+    layers: base overlay;
+}
+
+/* ── Header ────────────────────────────────────────────────────── */
+
+#header {
+    height: 3;
+    dock: top;
+    background: $surface;
+    border-bottom: tall $primary;
+    padding: 0 2;
+    layout: horizontal;
+    align: left middle;
+}
+
+#header-logo {
+    color: $primary;
+    text-style: bold;
+    width: auto;
+}
+
+#header-model {
+    color: $text-muted;
+    text-style: italic;
+    width: 1fr;
+    content-align: right middle;
+}
+
+#header-status {
+    color: $success;
+    width: auto;
+    text-style: bold;
+}
+
+/* ── Main layout ───────────────────────────────────────────────── */
+
+#main-container {
+    layout: horizontal;
+    height: 1fr;
+}
+
+/* ── Sidebar ───────────────────────────────────────────────────── */
+
+#sidebar {
+    width: 28;
+    min-width: 20;
+    background: $surface;
+    border-right: tall $primary-darken-2;
+    padding: 1 0;
+}
+
+#sidebar-title {
+    color: $primary;
+    text-style: bold;
+    padding: 0 2;
+    margin-bottom: 1;
+}
+
+SidebarItem {
+    padding: 0 2;
+    height: 2;
+    layout: horizontal;
+    align: left middle;
+    color: $text-muted;
+}
+
+SidebarItem:hover {
+    background: $primary-darken-3;
+    color: $text;
+}
+
+SidebarItem.--active {
+    background: $primary-darken-2;
+    color: $primary;
+    text-style: bold;
+}
+
+SidebarItem .item-icon {
+    width: 3;
+    color: $primary-muted;
+}
+
+SidebarItem.--active .item-icon {
+    color: $primary;
+}
+
+/* ── Chat area ─────────────────────────────────────────────────── */
+
+#chat-area {
+    layout: vertical;
+    width: 1fr;
+    background: $background;
+}
+
+/* ── Messages ──────────────────────────────────────────────────── */
+
+#messages-scroll {
+    height: 1fr;
+    padding: 1 2;
+    scrollbar-color: $primary-darken-2 $surface;
+    scrollbar-size: 1 1;
+}
+
+/* ── Message bubbles ───────────────────────────────────────────── */
+
+MessageBubble {
+    layout: vertical;
+    margin: 0 0 1 0;
+    width: 1fr;
+    height: auto;
+}
+
+MessageBubble.user {
+    align: right top;
+}
+
+MessageBubble.assistant {
+    align: left top;
+}
+
+.bubble-header {
+    height: 1;
+    color: $text-muted;
+    text-style: italic;
+    margin-bottom: 0;
+    width: 1fr;
+}
+
+MessageBubble.user .bubble-header {
+    text-align: right;
+}
+
+.bubble-body {
+    background: $surface;
+    border: tall $primary-darken-2;
+    border-left: tall $primary;
+    padding: 0 2;
+    width: auto;
+    max-width: 80%;
+    color: $text;
+    height: auto;
+}
+
+MessageBubble.user .bubble-body {
+    background: $primary-darken-3;
+    border: tall $primary;
+    border-right: tall $accent;
+    color: $text;
+}
+
+MessageBubble.assistant .bubble-body {
+    background: $surface;
+    border: tall $surface-lighten-2;
+    border-left: tall $accent;
+}
+
+/* ── Streaming cursor ──────────────────────────────────────────── */
+
+.streaming-cursor {
+    color: $primary;
+    text-style: blink bold;
+}
+
+/* ── Agent activity log ────────────────────────────────────────── */
+
+AgentActivityLog {
+    height: 7;
+    background: $surface-darken-1;
+    border-top: tall $primary-darken-2;
+    padding: 0 2;
+    overflow-y: auto;
+    scrollbar-size: 0 0;
+}
+
+#activity-title {
+    color: $text-muted;
+    text-style: bold;
+    height: 1;
+    padding-top: 1;
+}
+
+.activity-line {
+    color: $text-muted;
+    height: 1;
+}
+
+.activity-line.tool {
+    color: $primary;
+}
+
+.activity-line.error {
+    color: $error;
+}
+
+.activity-line.done {
+    color: $success;
+}
+
+/* ── Input bar ─────────────────────────────────────────────────── */
+
+#input-bar {
+    height: 5;
+    dock: bottom;
+    layout: horizontal;
+    background: $surface;
+    border-top: tall $primary;
+    padding: 1 2;
+    align: left middle;
+}
+
+#chat-input {
+    width: 1fr;
+    background: $background;
+    border: tall $primary-darken-2;
+    color: $text;
+    padding: 0 1;
+    height: 3;
+}
+
+#chat-input:focus {
+    border: tall $primary;
+    background: $surface-darken-1;
+}
+
+#send-btn {
+    width: 10;
+    height: 3;
+    margin-left: 1;
+    background: $primary;
+    color: $background;
+    text-style: bold;
+    border: none;
+    content-align: center middle;
+}
+
+#send-btn:hover {
+    background: $primary-lighten-1;
+}
+
+#send-btn:disabled {
+    background: $primary-darken-3;
+    color: $text-muted;
+}
+
+/* ── Spinner / thinking indicator ──────────────────────────────── */
+
+ThinkingIndicator {
+    height: 3;
+    layout: horizontal;
+    align: left middle;
+    padding: 0 2;
+    color: $primary;
+    display: none;
+}
+
+ThinkingIndicator.visible {
+    display: block;
+}
+
+/* ── Stats footer ──────────────────────────────────────────────── */
+
+#stats-bar {
+    height: 1;
+    dock: bottom;
+    background: $surface-darken-1;
+    padding: 0 2;
+    layout: horizontal;
+    align: left middle;
+    color: $text-muted;
+}
+
+.stat-item {
+    width: auto;
+    margin-right: 3;
+    color: $text-muted;
+}
+
+.stat-value {
+    color: $primary;
+    text-style: bold;
+}
+
+/* ── Thread explorer panel ─────────────────────────────────────── */
+
+#thread-panel {
+    width: 36;
+    background: $surface;
+    border-left: tall $primary-darken-2;
+    display: none;
+    padding: 1;
+}
+
+#thread-panel.visible {
+    display: block;
+}
+
+#thread-panel-title {
+    color: $primary;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+ThreadItem {
+    height: auto;
+    padding: 1;
+    margin-bottom: 1;
+    background: $surface-darken-1;
+    border-left: tall $accent;
+    color: $text-muted;
+}
+
+ThreadItem:hover {
+    background: $primary-darken-3;
+    color: $text;
+    border-left: tall $primary;
+}
+
+/* ── Welcome / empty state ─────────────────────────────────────── */
+
+#welcome {
+    width: 1fr;
+    height: 1fr;
+    align: center middle;
+    layout: vertical;
+}
+
+#welcome-logo {
+    color: $primary;
+    text-style: bold;
+    content-align: center middle;
+    width: 1fr;
+}
+
+#welcome-tagline {
+    color: $text-muted;
+    text-style: italic;
+    content-align: center middle;
+    width: 1fr;
+    margin-top: 1;
+}
+
+#welcome-hints {
+    color: $text-muted;
+    content-align: center middle;
+    width: 1fr;
+    margin-top: 2;
+}
+
+/* ── Key bindings bar ──────────────────────────────────────────── */
+
+#keybindings {
+    height: 1;
+    dock: bottom;
+    background: $surface-darken-2;
+    layout: horizontal;
+    align: left middle;
+    padding: 0 2;
+}
+
+.key-hint {
+    color: $text-muted;
+    width: auto;
+    margin-right: 2;
+}
+
+.key-kbd {
+    color: $primary;
+    text-style: bold;
+}
+
+/* ── Notification toast ────────────────────────────────────────── */
+
+Toast {
+    background: $surface;
+    border: tall $primary;
+    color: $text;
+}
+
+/* ── Scrollbars (global) ───────────────────────────────────────── */
+
+ScrollableContainer > .scrollbar {
+    width: 1;
+}
+
+/* ── Markdown inside bubbles ───────────────────────────────────── */
+
+Markdown {
+    background: transparent;
+    color: $text;
+    padding: 0;
+    margin: 0;
+}
+
+MarkdownFence {
+    background: $surface-darken-1;
+    border: tall $primary-darken-3;
+    padding: 0 1;
+    margin: 1 0;
+}
