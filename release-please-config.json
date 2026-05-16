@@ -8,7 +8,8 @@
       "extra-files": [
         {
           "type": "generic",
-          "path": "src/mattermind/__version__.py"
+          "path": "src/mattermind/__version__.py",
+          "search": "__version__ = \"$1\""
         }
       ]
     }
