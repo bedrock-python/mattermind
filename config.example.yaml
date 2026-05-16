@@ -1,0 +1,30 @@
+mattermost:
+  url: https://mm.company.com
+  token: ${MM_TOKEN}
+  team: engineering
+  timeout_seconds: 30
+  rate_limit_rps: 10
+
+llm:
+  base_url: https://api.openai.com/v1
+  api_key: ${OPENAI_API_KEY}
+  model: gpt-4o-mini
+  temperature: 0.2
+  max_tokens_per_response: 4000
+  request_timeout_seconds: 120
+
+agent:
+  max_iterations: 15
+  max_threads_per_query: 20
+  max_link_depth: 2
+  total_token_budget: 200000
+  parallel_tool_calls: true
+
+output:
+  show_thread_tree: true
+  show_token_usage: true
+  show_timings: true
+  format: markdown
+
+logging:
+  level: INFO
