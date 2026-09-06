@@ -11,6 +11,15 @@ Ask natural-language questions about your Mattermost workspace using LLM tool-ca
 
 **[Documentation](https://bedrock-python.github.io/mattermind/)**
 
+> [!TIP]
+> **Building this with an AI assistant?** Hand it
+> **[one page](https://bedrock-python.github.io/mattermind/agents/)** instead of the whole
+> site: every command and flag, every configuration key and its default, the four tools the
+> model is given, the rules that break a run when they are broken, the mistakes assistants
+> actually make with this CLI, and a map of which page to fetch for the rest. Every docs
+> page is also served as raw Markdown at its own URL, and a **Copy page** button at the top
+> of each one hands it straight to a chat window.
+
 ## Features
 
 - Full-text search across your Mattermost team via the REST API v4
