@@ -397,3 +397,82 @@ async def test__search_posts__two_results__channel_name_resolved(mm_config: Matt
             hits = await client.search_posts("team001", "incident", per_page=10)
 
     assert hits[0].channel_name == "general"
+
+
+# ------------------------------------------------------------------ #
+# search_posts — permalink and username                               #
+# ------------------------------------------------------------------ #
+
+
+def _mock_search(mock: respx.MockRouter, post: dict[str, Any], user: dict[str, Any] | None = None) -> None:
+    """Mock one search hit plus the channel and user lookups it triggers."""
+    mock.post("/api/v4/teams/team001/posts/search").mock(
+        return_value=httpx.Response(200, json={"order": [post["id"]], "posts": {post["id"]: post}})
+    )
+    mock.get(f"/api/v4/channels/{post['channel_id']}").mock(
+        return_value=httpx.Response(200, json={"id": post["channel_id"], "name": "general"})
+    )
+    user_response = (
+        httpx.Response(200, json=user) if user is not None else httpx.Response(404, json={"message": "Not found"})
+    )
+    mock.get(f"/api/v4/users/{post['user_id']}").mock(return_value=user_response)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test__search_posts__team_configured__hit_carries_permalink(mm_config: MattermostConfig) -> None:
+    post = _post_data("post001", user_id="user001")
+
+    with respx.mock(base_url="https://mm.example.com") as mock:
+        _mock_search(mock, post, user={"id": "user001", "username": "jdoe"})
+        async with MattermostClient(mm_config) as client:
+            hits = await client.search_posts("team001", "incident", per_page=10)
+
+    assert hits[0].permalink == "https://mm.example.com/engineering/pl/post001"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test__search_posts__author_resolvable__hit_carries_username(mm_config: MattermostConfig) -> None:
+    post = _post_data("post001", user_id="user001")
+
+    with respx.mock(base_url="https://mm.example.com") as mock:
+        _mock_search(mock, post, user={"id": "user001", "username": "jdoe"})
+        async with MattermostClient(mm_config) as client:
+            hits = await client.search_posts("team001", "incident", per_page=10)
+
+    assert hits[0].username == "jdoe"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test__search_posts__author_lookup_fails__username_is_empty(mm_config: MattermostConfig) -> None:
+    post = _post_data("post001", user_id="user001")
+
+    with respx.mock(base_url="https://mm.example.com") as mock:
+        _mock_search(mock, post, user=None)
+        async with MattermostClient(mm_config) as client:
+            hits = await client.search_posts("team001", "incident", per_page=10)
+
+    assert hits[0].username == ""
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test__search_posts__no_team_configured__hit_permalink_is_empty() -> None:
+    config = MattermostConfig(url="https://mm.example.com", token="test-token-12345")  # noqa: S106
+    post = _post_data("post001", user_id="user001")
+
+    with respx.mock(base_url="https://mm.example.com") as mock:
+        _mock_search(mock, post, user={"id": "user001", "username": "jdoe"})
+        async with MattermostClient(config) as client:
+            hits = await client.search_posts("team001", "incident", per_page=10)
+
+    assert hits[0].permalink == ""
+
+
+@pytest.mark.unit
+def test__permalink__team_configured__builds_the_url(mm_config: MattermostConfig) -> None:
+    client = MattermostClient(mm_config)
+
+    assert client.permalink("post001") == "https://mm.example.com/engineering/pl/post001"
