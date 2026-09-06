@@ -258,7 +258,7 @@ from the submodule that declares it.
 
 | Name | Signature | Returns |
 |---|---|---|
-| `load_config` | `load_config(config_path: Path \| None = None, overrides: dict \| None = None)` | `AppConfig` |
+| `load_config` | `load_config(config_path: Path | None = None, overrides: dict | None = None)` | `AppConfig` |
 | `ConfigError` | exception | |
 | `AppConfig` | `mattermost`, `llm`, `agent`, `output`, `logging` | |
 | `MattermostConfig`, `LLMConfig`, `AgentConfig`, `OutputConfig`, `LoggingConfig` | the sections above | |
@@ -288,7 +288,7 @@ from the submodule that declares it.
 | Name | Signature | Returns |
 |---|---|---|
 | `AgentLoop` | `AgentLoop(config: AppConfig, client: MattermostClient, console: Console, verbose: bool = False)` | |
-| `.run(question, on_status=None)` | `on_status: Callable[[str], None] \| None` | `AskResult` |
+| `.run(question, on_status=None)` | `on_status: Callable[[str], None] | None` | `AskResult` |
 | `AgentState` | dataclass: `visited_post_ids`, `link_depth`, `token_usage`, `threads_fetched`, `tool_calls_made`, `explored_threads`, `incomplete` | |
 
 `mattermind.agent.tools` adds `TOOL_DEFINITIONS`, `execute_tool(...)` and
