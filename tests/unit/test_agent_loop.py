@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -10,6 +10,7 @@ from mattermind.agent.loop import AgentLoop
 from mattermind.agent.state import AgentState
 from mattermind.agent.tools import execute_tool
 from mattermind.config.models import AgentConfig, AppConfig, LLMConfig, MattermostConfig
+from mattermind.mattermost.models import Post, SearchHit, Thread
 from mattermind.models import AskResult
 
 
@@ -369,3 +370,178 @@ async def test__execute_tool__already_visited_post__client_not_called(mm_client:
     )
 
     mm_client.get_thread.assert_not_called()
+
+
+# ------------------------------------------------------------------ #
+# execute_tool — max_link_depth                                       #
+# ------------------------------------------------------------------ #
+
+
+def _thread(post_id: str = "post001", message: str = "hello", channel_id: str = "chan001") -> Thread:
+    return Thread(
+        root_post_id=post_id,
+        posts=[
+            Post(
+                id=post_id,
+                create_at=1_700_000_000_000,
+                user_id="user001",
+                channel_id=channel_id,
+                message=message,
+                root_id="",
+            )
+        ],
+    )
+
+
+async def _get_thread(
+    post_id: str,
+    state: AgentState,
+    client: AsyncMock,
+    config: AgentConfig | None = None,
+) -> dict[str, Any]:
+    result_str = await execute_tool(
+        tool_name="mm_get_thread",
+        tool_args={"post_id": post_id},
+        client=client,
+        team_id="team001",
+        state=state,
+        config=config or AgentConfig(),
+        mm_url="https://mm.example.com",
+        mm_team="engineering",
+    )
+    return cast(dict[str, Any], json.loads(result_str))
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test__execute_tool__post_at_max_link_depth__thread_is_fetched(mm_client: AsyncMock) -> None:
+    mm_client.get_thread = AsyncMock(return_value=_thread("post002"))
+    state = AgentState()
+    state.link_depth["post002"] = 2
+
+    result = await _get_thread("post002", state, mm_client, AgentConfig(max_link_depth=2))
+
+    assert result["root_post_id"] == "post002"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test__execute_tool__post_beyond_max_link_depth__returns_error_json(mm_client: AsyncMock) -> None:
+    mm_client.get_thread = AsyncMock(return_value=_thread("post002"))
+    state = AgentState()
+    state.link_depth["post002"] = 3
+
+    result = await _get_thread("post002", state, mm_client, AgentConfig(max_link_depth=2))
+
+    assert "max_link_depth" in result["error"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test__execute_tool__post_beyond_max_link_depth__client_not_called(mm_client: AsyncMock) -> None:
+    mm_client.get_thread = AsyncMock(return_value=_thread("post002"))
+    state = AgentState()
+    state.link_depth["post002"] = 3
+
+    await _get_thread("post002", state, mm_client, AgentConfig(max_link_depth=2))
+
+    mm_client.get_thread.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test__execute_tool__thread_links_to_another_post__linked_post_is_one_level_deeper(
+    mm_client: AsyncMock,
+) -> None:
+    linked = "https://mm.example.com/engineering/pl/postaaa0002"
+    mm_client.get_thread = AsyncMock(return_value=_thread("postaaa0001", message=f"see {linked}"))
+    state = AgentState()
+
+    await _get_thread("postaaa0001", state, mm_client)
+
+    assert state.link_depth["postaaa0002"] == 1
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test__execute_tool__link_chain_longer_than_max_depth__last_hop_is_refused(
+    mm_client: AsyncMock,
+) -> None:
+    config = AgentConfig(max_link_depth=1)
+    state = AgentState()
+    mm_client.get_thread = AsyncMock(return_value=_thread("postaaa0001", message="see /pl/postaaa0002"))
+    await _get_thread("postaaa0001", state, mm_client, config)
+    mm_client.get_thread = AsyncMock(return_value=_thread("postaaa0002", message="see /pl/postaaa0003"))
+    await _get_thread("postaaa0002", state, mm_client, config)
+
+    mm_client.get_thread = AsyncMock(return_value=_thread("postaaa0003"))
+    result = await _get_thread("postaaa0003", state, mm_client, config)
+
+    assert "max_link_depth" in result["error"]
+
+
+# ------------------------------------------------------------------ #
+# execute_tool — explored threads                                     #
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test__execute_tool__channel_name_known__explored_thread_uses_the_name(mm_client: AsyncMock) -> None:
+    mm_client.get_thread = AsyncMock(return_value=_thread("post001", channel_id="chan001"))
+    state = AgentState()
+    state.channel_names["chan001"] = "general"
+
+    await _get_thread("post001", state, mm_client)
+
+    assert state.explored_threads[0]["channel"] == "general"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test__execute_tool__search_hits__record_channel_names_and_depth_zero(mm_client: AsyncMock) -> None:
+    mm_client.search_posts = AsyncMock(
+        return_value=[
+            SearchHit(
+                post_id="post001",
+                message="incident",
+                channel_id="chan001",
+                channel_name="general",
+                user_id="user001",
+                username="jdoe",
+                permalink="https://mm.example.com/engineering/pl/post001",
+            )
+        ]
+    )
+    state = AgentState()
+
+    await execute_tool(
+        tool_name="mm_search",
+        tool_args={"query": "incident"},
+        client=mm_client,
+        team_id="team001",
+        state=state,
+        config=AgentConfig(),
+        mm_url="https://mm.example.com",
+        mm_team="engineering",
+    )
+
+    assert state.link_depth["post001"] == 0
+    assert state.channel_names["chan001"] == "general"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test__agent_loop__thread_fetched__ask_result_carries_explored_threads(
+    app_config: AppConfig, mm_client: AsyncMock, console: MagicMock
+) -> None:
+    mm_client.get_thread = AsyncMock(return_value=_thread("post001"))
+    tool_call = _tool_call("mm_get_thread", {"post_id": "post001"})
+    responses = [_llm_response(tool_calls=[tool_call]), _llm_response(content="Done.")]
+
+    with patch("mattermind.agent.loop.AsyncOpenAI") as mock_openai:
+        mock_openai.return_value.chat.completions.create = AsyncMock(side_effect=responses)
+        loop = AgentLoop(config=app_config, client=mm_client, console=console)
+        result = await loop.run("what happened?")
+
+    assert result.explored_threads[0]["permalink"] == "https://mm.example.com/engineering/pl/post001"

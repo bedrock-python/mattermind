@@ -17,6 +17,9 @@ class AgentState:
     link_depth: dict[str, int] = field(default_factory=dict)
     """Maps post_id -> depth at which it was discovered (0 = direct search hit)."""
 
+    channel_names: dict[str, str] = field(default_factory=dict)
+    """Maps channel_id -> channel name, as learned from search results."""
+
     token_usage: TokenUsage = field(default_factory=TokenUsage)
     """Cumulative token usage across all LLM calls."""
 

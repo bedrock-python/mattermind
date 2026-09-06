@@ -159,7 +159,7 @@ async def execute_tool(
 
     try:
         if tool_name == "mm_search":
-            return await _tool_search(tool_args, client, team_id)
+            return await _tool_search(tool_args, client, team_id, state)
         if tool_name == "mm_get_thread":
             return await _tool_get_thread(tool_args, client, state, config, mm_url, mm_team)
         if tool_name == "mm_resolve_permalink":
@@ -177,6 +177,7 @@ async def _tool_search(
     args: dict[str, Any],
     client: MattermostClient,
     team_id: str,
+    state: AgentState,
 ) -> str:
     query: str = args["query"]
     # channel filter is passed through to the search call
@@ -193,12 +194,19 @@ async def _tool_search(
 
     hits = await client.search_posts(team_id=team_id, query=full_query, channel_id=None, per_page=limit)
 
+    for hit in hits:
+        # A search hit is the start of a link chain, not a link away from one.
+        state.link_depth.setdefault(hit.post_id, 0)
+        if hit.channel_id:
+            state.channel_names.setdefault(hit.channel_id, hit.channel_name)
+
     results = [
         {
             "post_id": h.post_id,
             "message": h.message[:500],  # truncate for context efficiency
             "channel_name": h.channel_name,
             "user_id": h.user_id,
+            "username": h.username,
             "permalink": h.permalink,
         }
         for h in hits
@@ -223,10 +231,25 @@ async def _tool_get_thread(
         state.incomplete = True
         return _dumps({"error": "Thread fetch limit reached. Stopping exploration."})
 
+    # Depth 0 is a search hit; every permalink found inside a thread is one level
+    # deeper. Posts we have never seen a link to are treated as a fresh start.
+    depth = state.link_depth.setdefault(post_id, 0)
+    if depth > config.max_link_depth:
+        return _dumps(
+            {
+                "error": (
+                    f"Post {post_id} is {depth} links away from a search hit, "
+                    f"beyond max_link_depth={config.max_link_depth}. Do not follow this link."
+                )
+            }
+        )
+
     state.visited_post_ids.add(post_id)
 
     thread = await client.get_thread(post_id)
     state.threads_fetched += 1
+
+    channel_id = thread.posts[0].channel_id if thread.posts else ""
 
     # Track for the summary
     first_msg = thread.posts[0].message[:80] if thread.posts else ""
@@ -235,7 +258,7 @@ async def _tool_get_thread(
     state.explored_threads.append(
         {
             "post_id": thread.root_post_id,
-            "channel": thread.posts[0].channel_id if thread.posts else "",
+            "channel": state.channel_names.get(channel_id, channel_id),
             "title": first_msg,
             "permalink": root_permalink,
         }
@@ -245,6 +268,9 @@ async def _tool_get_thread(
     serialised_posts = []
     for post in thread.posts:
         permalink = f"{mm_url.rstrip('/')}/{mm_team}/pl/{post.id}"
+        # Everything this thread links to sits one level deeper.
+        for linked_id in _PERMALINK_RE.findall(post.message):
+            state.link_depth.setdefault(linked_id, depth + 1)
         serialised_posts.append(
             {
                 "post_id": post.id,

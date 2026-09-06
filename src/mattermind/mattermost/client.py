@@ -204,23 +204,46 @@ class MattermostClient:
                 else:
                     channel_names[cid] = cid
 
+        # Same again for the authors, so a hit can be attributed without a
+        # separate mm_get_user round trip.
+        unique_user_ids: set[str] = {
+            uid for pid in order if pid in posts_map and (uid := posts_map[pid].get("user_id", ""))
+        }
+        usernames: dict[str, str] = {}
+        if unique_user_ids:
+            user_results = await asyncio.gather(
+                *[self.get_user(uid) for uid in unique_user_ids],
+                return_exceptions=True,
+            )
+            for uid, user_result in zip(unique_user_ids, user_results, strict=False):
+                usernames[uid] = user_result.username if isinstance(user_result, User) else ""
+
         hits: list[SearchHit] = []
         for post_id in order:
             if post_id not in posts_map:
                 continue
             raw = posts_map[post_id]
             cid = raw.get("channel_id", "")
+            uid = raw.get("user_id", "")
             hits.append(
                 SearchHit(
                     post_id=post_id,
                     message=raw.get("message", ""),
                     channel_id=cid,
                     channel_name=channel_names.get(cid, cid),
-                    user_id=raw.get("user_id", ""),
+                    user_id=uid,
+                    username=usernames.get(uid, ""),
+                    permalink=self.permalink(post_id),
                 )
             )
 
         return hits
+
+    def permalink(self, post_id: str) -> str:
+        """Return the permalink for a post, or "" when no team is configured."""
+        if not self._config.team:
+            return ""
+        return f"{self._base_url}/{self._config.team}/pl/{post_id}"
 
     async def get_thread(self, post_id: str) -> Thread:
         """Fetch the complete thread containing post_id."""

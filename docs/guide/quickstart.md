@@ -43,7 +43,8 @@ mattermind ask "what was decided about the DB migration?"
 mattermind config validate
 ```
 
-This tests connectivity to both Mattermost and the LLM endpoint.
+This tests connectivity to both Mattermost and the LLM endpoint, and exits non-zero if
+either one refuses.
 
 ## Modes
 

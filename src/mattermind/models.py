@@ -29,3 +29,5 @@ class AskResult(BaseModel):
     elapsed_seconds: float
     incomplete: bool = False
     permalinks: list[str] = []
+    explored_threads: list[dict[str, str]] = []
+    """One entry per thread read: ``post_id``, ``channel``, ``title``, ``permalink``."""

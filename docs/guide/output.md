@@ -15,7 +15,8 @@ Requires a terminal that supports ANSI escape codes.
 
 ## `--quiet`
 
-Plain text answer only — no banner, no progress, no tree. Useful for reading in a pager:
+Plain text answer only — no banner, no progress, no tree, no summary. Useful for reading
+in a pager:
 
 ```bash
 mattermind ask "..." --quiet | less
@@ -37,9 +38,19 @@ Single JSON object on stdout, schema:
   },
   "elapsed_seconds": 14.2,
   "incomplete": false,
-  "permalinks": ["https://mm.company.com/team/pl/abc123", "..."]
+  "permalinks": ["https://mm.company.com/team/pl/abc123", "..."],
+  "explored_threads": [
+    {
+      "post_id": "abc123",
+      "channel": "engineering",
+      "title": "auth service migration",
+      "permalink": "https://mm.company.com/team/pl/abc123"
+    }
+  ]
 }
 ```
+
+`output.format: json` in the config file prints the same body without the flag.
 
 Ideal for scripts and automation:
 
