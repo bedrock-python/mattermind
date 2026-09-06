@@ -122,17 +122,17 @@ print(asyncio.run(ask("who owns billing?")))
 | `mattermind login [--mm-url URL]` | Prompts for an `MMAUTHTOKEN` and writes it as `mattermost.token`, removing any `login` and `password` beside it |
 | `mattermind init` | Interactive wizard; writes `~/.config/mattermind/config.yaml` and overwrites what is there |
 | `mattermind config show` | Prints the resolved configuration with the token and API key truncated to five characters |
-| `mattermind config validate` | Loads and validates the configuration. It contacts nothing |
+| `mattermind config validate` | Validates the configuration, then checks both endpoints — `GET /api/v4/users/me` on Mattermost and `GET /models` on the LLM base URL. Exits 1 if either check fails |
 | `mattermind version` | Prints the version |
 
-Global flags, defined on the application callback and therefore accepted **only before the
-subcommand**:
+Global flags, declared both on the application callback and on every command, so they are
+accepted **before or after the subcommand**:
 
 | Flag | Effect |
 |---|---|
 | `--config PATH`, `-c` | Read this YAML file instead of `~/.config/mattermind/config.yaml`. Also the file `teams` and `login` write back to |
 | `--verbose`, `-v` | Print each tool call and the first 200 characters of each tool result, and a full traceback on an unexpected error |
-| `--quiet`, `-q` | Silences the console completely — see rule 2 |
+| `--quiet`, `-q` | Print the answer as plain text and nothing else — no banner, no query panel, no status lines, no thread tree, no summary |
 | `--json` | Print the result as JSON instead of rendering it |
 | `--no-color` | Disable ANSI colour |
 
@@ -141,7 +141,7 @@ Exit codes:
 | Code | Meaning |
 |---|---|
 | 0 | The command finished |
-| 1 | The configuration is invalid, or the run raised |
+| 1 | The configuration is invalid, the run raised, or a `config validate` connectivity check failed |
 | 2 | Usage — an unknown option, a missing argument, or no command at all |
 | 130 | `Ctrl-C` during `ask` or `init` |
 
@@ -180,10 +180,10 @@ output:
   show_thread_tree: true
   show_token_usage: true
   show_timings: true
-  format: markdown               # markdown | plain
+  format: markdown               # markdown | plain | json
 
 logging:
-  level: INFO
+  level: INFO                    # DEBUG | INFO | WARNING | ERROR | CRITICAL
 ```
 
 | Section | Field | Default | Notes |
@@ -204,14 +204,14 @@ logging:
 | | `verify_ssl` | `True` | |
 | `agent` | `max_iterations` | `15` | Enforced: LLM calls per run |
 | | `max_threads_per_query` | `20` | Enforced: successful `mm_get_thread` calls per run |
-| | `max_link_depth` | `2` | Written into the system prompt only — see rule 7 |
+| | `max_link_depth` | `2` | Enforced: how many permalink hops from a search hit `mm_get_thread` will follow — see rule 7 |
 | | `total_token_budget` | `200000` | Checked after each LLM call |
 | | `parallel_tool_calls` | `True` | Run one round of tool calls concurrently |
-| `output` | `show_thread_tree` | `True` | Has no visible effect today — see rule 14 |
+| `output` | `show_thread_tree` | `True` | Print the explored-thread tree between the answer and the summary |
 | | `show_token_usage` | `True` | Token row in the summary panel |
 | | `show_timings` | `True` | Elapsed row in the summary panel |
-| | `format` | `markdown` | `markdown` or `plain`; `json` silences the answer |
-| `logging` | `level` | `INFO` | Parsed and never applied — see rule 15 |
+| | `format` | `markdown` | `markdown`, `plain` or `json`; `json` prints the same body as `--json`. Any other value is a configuration error |
+| `logging` | `level` | `INFO` | Applied to the root logger by `ask`, `teams` and `config validate`. Case-insensitive; an unknown level is a configuration error |
 
 Environment variables, each overriding the same key in the file:
 
@@ -239,15 +239,16 @@ Four, defined in `mattermind.agent.tools.TOOL_DEFINITIONS` and dispatched by
 
 | Tool | Arguments | Returns |
 |---|---|---|
-| `mm_search` | `query` (required), `channel`, `since`, `limit` (default 20, capped at 60) | `{"results": [{post_id, message, channel_name, user_id, permalink}], "count": n}`. `message` is truncated to 500 characters |
+| `mm_search` | `query` (required), `channel`, `since`, `limit` (default 20, capped at 60) | `{"results": [{post_id, message, channel_name, user_id, username, permalink}], "count": n}`. `message` is truncated to 500 characters |
 | `mm_get_thread` | `post_id` | `{"root_post_id", "post_count", "posts": [{post_id, user_id, message, created_at, permalink}]}`, posts ascending by creation time |
 | `mm_resolve_permalink` | `url` | `{"post_id": "..."}`, parsed from `/pl/<id>` in the URL |
 | `mm_get_user` | `user_id` | `{"user_id", "username", "display_name"}` |
 
 `channel` and `since` are not separate API parameters: they are appended to the search
 terms as `in:<channel>` and `after:<date>`, so they follow Mattermost's own search syntax.
-`mm_get_thread` refuses a post it has already fetched, and refuses everything once
-`max_threads_per_query` threads have been read — the second refusal sets `incomplete`.
+`mm_get_thread` refuses a post it has already fetched, refuses a post more than
+`max_link_depth` permalink hops from a search hit, and refuses everything once
+`max_threads_per_query` threads have been read — the last refusal sets `incomplete`.
 
 ## The Python surface
 
@@ -274,10 +275,11 @@ from the submodule that declares it.
 | `.get_thread(post_id)` | | `Thread` |
 | `.get_user(user_id)` | | `User` |
 | `.get_channel(channel_id)` | | `dict[str, str]` of the raw channel payload |
+| `.permalink(post_id)` | | `str` — `{url}/{team}/pl/{post_id}`, or `""` when `mattermost.team` is unset |
 | `.validate_connection()` | | `bool` — `GET /users/me` succeeded |
 | `Post` | `id`, `create_at` (ms epoch), `user_id`, `channel_id`, `message`, `root_id` | `.created_at` is an aware UTC `datetime` |
 | `Thread` | `root_post_id`, `posts` | ascending by `create_at` |
-| `SearchHit` | `post_id`, `message`, `channel_id`, `channel_name`, `user_id`, `username`, `permalink` | the last two are always empty — see rule 11 |
+| `SearchHit` | `post_id`, `message`, `channel_id`, `channel_name`, `user_id`, `username`, `permalink` | `search_posts` fills both; `permalink` is empty when `mattermost.team` is unset — see rule 11 |
 | `User` | `id`, `username`, `first_name`, `last_name`, `nickname`, `position` | `.display_name` is full name, else nickname, else username |
 
 `Team` lives in `mattermind.mattermost.models` and `MattermostAPIError` in
@@ -289,7 +291,7 @@ from the submodule that declares it.
 |---|---|---|
 | `AgentLoop` | `AgentLoop(config: AppConfig, client: MattermostClient, console: Console, verbose: bool = False)` | |
 | `.run(question, on_status=None)` | `on_status: Callable[[str], None] | None` | `AskResult` |
-| `AgentState` | dataclass: `visited_post_ids`, `link_depth`, `token_usage`, `threads_fetched`, `tool_calls_made`, `explored_threads`, `incomplete` | |
+| `AgentState` | dataclass: `visited_post_ids`, `link_depth`, `channel_names`, `token_usage`, `threads_fetched`, `tool_calls_made`, `explored_threads`, `incomplete` | |
 
 `mattermind.agent.tools` adds `TOOL_DEFINITIONS`, `execute_tool(...)` and
 `parse_post_id_from_permalink(url) -> str | None`; `mattermind.agent.prompts` adds
@@ -299,7 +301,7 @@ from the submodule that declares it.
 
 | Name | Fields |
 |---|---|
-| `AskResult` | `answer: str`, `threads_explored: int`, `tool_calls_made: int`, `token_usage: TokenUsage`, `elapsed_seconds: float`, `incomplete: bool = False`, `permalinks: list[str] = []` |
+| `AskResult` | `answer: str`, `threads_explored: int`, `tool_calls_made: int`, `token_usage: TokenUsage`, `elapsed_seconds: float`, `incomplete: bool = False`, `permalinks: list[str] = []`, `explored_threads: list[dict[str, str]] = []` (`post_id`, `channel`, `title`, `permalink` per thread read) |
 | `TokenUsage` | `prompt_tokens`, `completion_tokens`, `total_tokens`, all `int` and all defaulting to 0; `.add(other)` returns a new instance |
 
 `mattermind.ui` exports `CONSOLE` and `THEME`; `mattermind.ui.tui` exports `MattermindApp`
@@ -308,30 +310,37 @@ prints with.
 
 ## Rules that hold or break the code
 
-1. **Global flags go before the subcommand.** `--config`, `--verbose`, `--quiet`, `--json`
-   and `--no-color` belong to the application callback, so `mattermind --json ask "..."`
-   works and `mattermind ask "..." --json` exits 2 with `No such option: --json`. The
-   README and the commands guide print the second form; the parser does not accept it.
-2. **`--quiet` suppresses the answer too.** It builds a Rich console with `quiet=True`,
-   which writes nothing at all — not the banner, not the status lines, not the answer. For
-   a bare answer use `mattermind --json ask "..." | jq -r .answer`.
+1. **Global flags go on either side of the subcommand.** `--config`, `--verbose`,
+   `--quiet`, `--json` and `--no-color` are declared on the application callback and on
+   every command, so `mattermind --json ask "..."` and `mattermind ask "..." --json` are
+   the same command. Given on both sides, a switch is simply on, and the `--config` after
+   the subcommand wins.
+2. **`--quiet` prints the answer as plain text, and nothing else.** No banner, no query
+   panel, no status lines, no thread tree, no run summary — and no Rich markdown panel
+   either, so it pipes cleanly. `mattermind --json ask "..." | jq -r .answer` is the
+   machine-readable alternative.
 3. **Exactly one authentication method.** A token, or a login and a password; both present
    is an error, neither is an error. Environment variables merge *on top of* the file, so
    `MATTERMIND_MM_TOKEN` set against a file that carries `login` and `password` makes the
    configuration invalid rather than overriding it. `mattermind login` removes the pair
    when it writes a token, which is the safe way to switch.
-4. **Unknown configuration keys are ignored, not rejected.** The models take Pydantic's
-   default `extra="ignore"`, so a misspelled key is silently dropped and its default
-   applies. `mattermind config show` is how you check what actually loaded.
+4. **Unknown configuration keys are rejected.** Every config model sets
+   `extra="forbid"`, so a misspelled key fails validation with the key named in the error
+   instead of being dropped. The same holds for a bad `output.format` or `logging.level`
+   value. `mattermind config show` is how you check what actually loaded.
 5. **A broken default config file is swallowed; a broken `--config` file is not.** With no
    `--config`, an unparseable `~/.config/mattermind/config.yaml` is ignored and the run
    continues on environment variables alone. With `--config PATH`, a missing or unparseable
    file raises `ConfigError`.
 6. **`rate_limit_rps` is a concurrency limit, not a rate.** It sizes an
    `asyncio.Semaphore` around in-flight requests; nothing measures requests per second.
-7. **`max_link_depth` is a number in the prompt, not a limit in the code.** It is
-   interpolated into the system prompt and nothing enforces it. `max_iterations` and
-   `max_threads_per_query` are enforced, in the loop and in `mm_get_thread` respectively.
+7. **`max_link_depth` is enforced, not just prompted.** A search hit is depth 0; every
+   permalink found inside a fetched thread is recorded one level deeper in
+   `AgentState.link_depth`. `mm_get_thread` refuses a post whose recorded depth exceeds
+   `max_link_depth` and tells the model why. A post nothing has linked to counts as depth
+   0, so a permalink the model brings in from elsewhere is never refused on arrival.
+   `max_iterations` and `max_threads_per_query` are enforced too, in the loop and in
+   `mm_get_thread` respectively.
 8. **The token budget is checked after each LLM call, not before.** Crossing it prompts on
    stdin — `Continue beyond token budget? [y/N]:` — under every output mode, `--json`
    included. Answering no ends the run with `incomplete=True`. Answering yes raises the
@@ -342,24 +351,26 @@ prints with.
 10. **`MattermostClient` only works inside `async with`.** Constructed and called directly,
     every method raises `RuntimeError`; login/password authentication happens in
     `__aenter__` and never otherwise.
-11. **Search results carry no permalink and no username.** `SearchHit.permalink` and
-    `SearchHit.username` are always empty strings — `search_posts` never fills them. A
-    citable permalink exists only after `mm_get_thread`, which builds it as
-    `{mattermost.url}/{mattermost.team}/pl/{post_id}`. That is also why an unset `team`
-    would produce permalinks with an empty path segment.
+11. **A search hit is citable, unless `team` is unset.** `search_posts` fills
+    `permalink` as `{mattermost.url}/{mattermost.team}/pl/{post_id}` and `username` from
+    one `GET /users/{id}` per distinct author in the page of results. With no
+    `mattermost.team` configured the permalink is `""` rather than a URL with a hole in
+    it; an author the server will not return leaves `username` empty. `client.permalink()`
+    builds the same URL for a post id you already hold.
 12. **`mattermost.team` must be set for `ask` and `chat`.** `AgentLoop.run` raises
     `ValueError` before the first LLM call if it is missing. `mattermind teams` is the way
     to set it.
 13. **The agent reads exactly what the credential reads.** Search runs as the authenticated
     user against one team; a channel that user cannot see does not exist as far as the
     answer is concerned, and nothing in the output says so.
-14. **`output.format: json` in the file silences the answer.** The renderer returns early
-    on `json` and the JSON body is written only under the `--json` flag, so the combination
-    prints a summary and no answer. Keep the file on `markdown` or `plain` and use `--json`
-    for machine output. `show_thread_tree` likewise gates nothing visible today.
-15. **`logging.level` is not applied.** The value is validated and then never read; module
-    loggers keep the root configuration of the process. `--verbose` prints tool calls to
-    the console, it does not raise the log level.
+14. **`output.format: json` and `--json` print the same body.** Setting the file to
+    `json` makes every `ask` machine-readable without the flag; `markdown` and `plain`
+    render the answer, and `--quiet` overrides both with plain text. `show_thread_tree`
+    prints the tree of threads the run read, built from `AskResult.explored_threads`.
+15. **`logging.level` is applied by the commands that do work.** `ask`, `teams` and
+    `config validate` call `logging.basicConfig` with it, writing to stderr; `chat` does
+    not, because log lines would corrupt the TUI. `--verbose` prints tool calls to the
+    console, it does not raise the log level.
 16. **Import a name from the module that declares it.** The project runs mypy with
     `implicit_reexport = false`, and `Team` and `MattermostAPIError` are absent from
     `mattermind.mattermost.__all__` — import them from `mattermind.mattermost.models` and
@@ -373,19 +384,22 @@ prints with.
 ## Common mistakes
 
 ```bash
-# WRONG — a global flag after the subcommand: exit 2, "No such option: --json"
-mattermind ask "what shipped last week?" --json
+# WRONG — scraping the answer out of the rendered panel
+mattermind ask "who owns billing?" | sed -n '/Answer/,$p'
 
-# RIGHT
-mattermind --json ask "what shipped last week?"
+# RIGHT — the answer as text, or as JSON
+mattermind ask "who owns billing?" --quiet
+mattermind ask "who owns billing?" --json | jq -r .answer
 ```
 
-```bash
-# WRONG — --quiet to get a bare answer: prints nothing at all
-mattermind --quiet ask "who owns billing?"
+```yaml
+# WRONG — a misspelled key is now a configuration error, not a silent default
+agent:
+  max_iteration: 30
 
 # RIGHT
-mattermind --json ask "who owns billing?" | jq -r .answer
+agent:
+  max_iterations: 30
 ```
 
 ```yaml
@@ -406,17 +420,15 @@ mattermost:
 ```
 
 ```python
-# WRONG — the client outside its context manager, and a search hit used as a citation
+# WRONG — the client outside its context manager: every call raises RuntimeError
 client = MattermostClient(config.mattermost)
 hits = await client.search_posts(team_id, "incident")
-cite(hits[0].permalink)                       # always ""
 
-# RIGHT
+# RIGHT — and a search hit already carries the permalink to cite
 async with MattermostClient(config.mattermost) as client:
     team_id = await client.get_team_id(config.mattermost.team)
     hits = await client.search_posts(team_id, "incident")
-    thread = await client.get_thread(hits[0].post_id)
-    cite(f"{config.mattermost.url.rstrip('/')}/{config.mattermost.team}/pl/{thread.root_post_id}")
+    cite(hits[0].permalink)                   # "" only when mattermost.team is unset
 ```
 
 ```python

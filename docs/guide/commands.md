@@ -34,7 +34,9 @@ mattermind --config ./custom.yaml config show
 
 ## `mattermind config validate`
 
-Validate config and test connectivity to both Mattermost and the LLM endpoint.
+Validate the config, then test connectivity to both Mattermost and the LLM endpoint —
+`GET /api/v4/users/me` on the Mattermost server, `GET /models` on the LLM base URL. Exits
+`1` if the config is invalid or either endpoint refuses.
 
 ```bash
 mattermind config validate
@@ -46,11 +48,12 @@ Print the installed version.
 
 ## Global Flags
 
-These work with every command:
+These work with every command, before or after the subcommand — `mattermind --json ask
+"..."` and `mattermind ask "..." --json` are the same command:
 
 | Flag | Description |
 |---|---|
-| `--config PATH` | Path to YAML config file |
+| `--config PATH` / `-c` | Path to YAML config file |
 | `--verbose / -v` | Show tool calls as JSON, full tracebacks |
 | `--quiet / -q` | Plain answer only, no UI chrome |
 | `--json` | Machine-readable JSON output |

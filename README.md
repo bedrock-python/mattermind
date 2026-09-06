@@ -111,10 +111,17 @@ agent:
   max_threads_per_query: 20
 
 output:
-  format: markdown             # markdown | plain
+  format: markdown             # markdown | plain | json
+  show_thread_tree: true
   show_token_usage: true
   show_timings: true
+
+logging:
+  level: INFO                  # DEBUG | INFO | WARNING | ERROR | CRITICAL
 ```
+
+Unknown keys are rejected rather than ignored, so a typo fails validation with the key
+named in the error.
 
 ### Environment Variables
 
@@ -140,16 +147,18 @@ mattermind teams            List available teams and save your selection
 mattermind login            Save a session token (MMAUTHTOKEN) to config
 mattermind init             Interactive config setup wizard
 mattermind config show      Print resolved config (secrets masked)
-mattermind config validate  Validate config file
+mattermind config validate  Validate config and check both endpoints are reachable
 mattermind version          Print version
 ```
 
 ### Global flags
 
+Accepted before or after the subcommand:
+
 ```
 -c / --config PATH    Path to config YAML file
 -v / --verbose        Enable verbose output (shows tool calls)
--q / --quiet          Suppress banner and status lines
+-q / --quiet          Print the answer as plain text, without the UI chrome
 --json                Output result as JSON (machine-readable)
 --no-color            Disable colour output
 ```
@@ -161,6 +170,7 @@ make install    # install deps
 make fmt        # format + fix lint
 make check      # lint + type-check
 make test       # run unit tests with coverage
+make test-all   # unit + integration tests (needs a real MM and LLM)
 ```
 
 ## Architecture

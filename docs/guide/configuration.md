@@ -19,6 +19,7 @@ mattermost:
   team: engineering
   timeout_seconds: 30
   rate_limit_rps: 10
+  verify_ssl: true             # false for a self-signed certificate
 
 llm:
   base_url: https://api.openai.com/v1
@@ -27,6 +28,7 @@ llm:
   temperature: 0.2
   max_tokens_per_response: 4000
   request_timeout_seconds: 120
+  verify_ssl: true
 
 agent:
   max_iterations: 15           # how many times LLM may call tools
@@ -39,11 +41,14 @@ output:
   show_thread_tree: true
   show_token_usage: true
   show_timings: true
-  format: markdown             # markdown | json | plain
+  format: markdown             # markdown | plain | json (json prints the --json body)
 
 logging:
-  level: INFO                  # DEBUG | INFO | WARNING | ERROR
+  level: INFO                  # DEBUG | INFO | WARNING | ERROR | CRITICAL
 ```
+
+Unknown keys are rejected: a misspelled key fails validation with the key named in the
+error, rather than being ignored.
 
 ## Environment Variables
 
@@ -51,16 +56,25 @@ logging:
 |---|---|
 | `MATTERMIND_MM_URL` | `mattermost.url` |
 | `MATTERMIND_MM_TOKEN` | `mattermost.token` |
+| `MATTERMIND_MM_LOGIN` | `mattermost.login` |
+| `MATTERMIND_MM_PASSWORD` | `mattermost.password` |
 | `MATTERMIND_TEAM` | `mattermost.team` |
+| `MATTERMIND_MM_VERIFY_SSL` | `mattermost.verify_ssl` |
 | `MATTERMIND_LLM_BASE_URL` | `llm.base_url` |
 | `MATTERMIND_LLM_API_KEY` | `llm.api_key` |
 | `MATTERMIND_MODEL` | `llm.model` |
+| `MATTERMIND_LLM_VERIFY_SSL` | `llm.verify_ssl` |
+
+There is no environment variable for any `agent`, `output` or `logging` field; those come
+from the file.
 
 ## CLI Flags (`ask` command)
 
 ```
 --mm-url TEXT
 --mm-token TEXT
+--mm-login TEXT
+--mm-password TEXT
 --team TEXT
 --llm-base-url TEXT
 --llm-api-key TEXT
