@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.0](https://github.com/bedrock-python/mattermind/compare/mattermind-v0.1.1...mattermind-v0.2.0) (2026-09-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* a configuration file carrying a key no other version of mattermind reads, an output.format outside markdown|plain|json, or an unknown logging.level now fails validation instead of being ignored.
+
+### Bug Fixes
+
+* make the CLI, config and agent do what the documentation says ([#19](https://github.com/bedrock-python/mattermind/issues/19)) ([55aa22d](https://github.com/bedrock-python/mattermind/commit/55aa22db6c62610bc2d96ec1b80b6ea07934f04b))
+
+
+### Documentation
+
+* an upgrade note for strict configuration validation ([#21](https://github.com/bedrock-python/mattermind/issues/21)) ([0eaba2f](https://github.com/bedrock-python/mattermind/commit/0eaba2fcb083b60500415fee7db85eb2454c4b75))
+
 ## [0.1.1](https://github.com/bedrock-python/mattermind/compare/mattermind-v0.1.0...mattermind-v0.1.1) (2026-09-05)
 
 
