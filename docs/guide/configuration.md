@@ -89,3 +89,19 @@ String values in YAML support `${VAR}` and `${VAR:-default}`:
 token: ${MM_TOKEN}            # required — raises ConfigError if unset
 model: ${MODEL:-gpt-4o-mini}  # optional — falls back to gpt-4o-mini
 ```
+
+## Upgrading to strict validation
+
+Configuration used to be read leniently: a key mattermind did not recognise was
+dropped in silence and its default applied, so a typo showed up as behaviour nobody
+asked for rather than as an error. Three things now fail validation instead:
+
+| What | Before | Now |
+|---|---|---|
+| a key no model declares | ignored, default applied | `ValidationError` naming the key |
+| `output.format` outside `markdown`, `plain`, `json` | ignored, `markdown` applied | `ValidationError` |
+| an unknown `logging.level` | ignored | `ValidationError`; known levels are upper-cased for you |
+
+Run `mattermind config validate` against an existing file before upgrading. It reports
+the offending key and stops, which is the whole point — a config that no longer means
+what it says is worth an error.
