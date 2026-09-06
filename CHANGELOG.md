@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/bedrock-python/mattermind/compare/mattermind-v0.1.1...mattermind-v0.1.2) (2026-09-06)
+
+
+### Documentation
+
+* org-wide security policy and code of conduct ([#13](https://github.com/bedrock-python/mattermind/issues/13)) ([5d121bd](https://github.com/bedrock-python/mattermind/commit/5d121bdf7aecbb05872d3498a3e33dd683313edc))
+
 ## [0.1.1](https://github.com/bedrock-python/mattermind/compare/mattermind-v0.1.0...mattermind-v0.1.1) (2026-09-05)
 
 
