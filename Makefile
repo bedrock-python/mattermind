@@ -1,4 +1,4 @@
-.PHONY: install fmt check test test-unit test-integration build docs-serve docs-build clean
+.PHONY: install fmt check test test-all test-unit test-integration build docs-serve docs-build clean
 
 install:
 	uv sync --extra dev
@@ -20,6 +20,9 @@ test-integration:
 
 test:
 	uv run pytest -m unit --cov=src/mattermind --cov-report=term --cov-fail-under=80 --cov-report=xml:coverage.xml
+
+test-all:
+	uv run pytest
 
 build:
 	uv build
