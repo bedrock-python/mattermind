@@ -34,7 +34,7 @@ def _interpolate_value(value: str) -> str:
             return default
         raise ConfigError(
             f"Environment variable '{var_name}' is required but not set. "
-            f"Set it in your shell or add a default with ${{{{var_name}}:-default}}."
+            f"Set it in your shell or add a default with ${{{var_name}:-default}}."
         )
 
     return _ENV_VAR_RE.sub(replacer, value)

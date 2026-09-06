@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, model_validator
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 
 
 class MattermostConfig(BaseModel):
@@ -11,6 +15,8 @@ class MattermostConfig(BaseModel):
     Auth is either a personal access token (``token``) or a login/password pair.
     Exactly one of the two must be provided.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     url: str
     team: str | None = None
@@ -56,6 +62,8 @@ class MattermostConfig(BaseModel):
 class LLMConfig(BaseModel):
     """LLM provider settings."""
 
+    model_config = ConfigDict(extra="forbid")
+
     base_url: str = "https://api.openai.com/v1"
     api_key: str
     model: str = "gpt-4o-mini"
@@ -79,6 +87,8 @@ class LLMConfig(BaseModel):
 class AgentConfig(BaseModel):
     """Agent loop behaviour settings."""
 
+    model_config = ConfigDict(extra="forbid")
+
     max_iterations: int = 15
     max_threads_per_query: int = 20
     max_link_depth: int = 2
@@ -89,20 +99,34 @@ class AgentConfig(BaseModel):
 class OutputConfig(BaseModel):
     """Output rendering settings."""
 
+    model_config = ConfigDict(extra="forbid")
+
     show_thread_tree: bool = True
     show_token_usage: bool = True
     show_timings: bool = True
-    format: str = "markdown"  # markdown | json | plain
+    format: Literal["markdown", "json", "plain"] = "markdown"
 
 
 class LoggingConfig(BaseModel):
     """Logging settings."""
 
+    model_config = ConfigDict(extra="forbid")
+
     level: str = "INFO"
+
+    @field_validator("level", mode="after")
+    @classmethod
+    def _normalise_level(cls, value: str) -> str:
+        level = value.upper()
+        if level not in _LOG_LEVELS:
+            raise ValueError(f"Unknown logging level {value!r}. Use one of: {', '.join(_LOG_LEVELS)}.")
+        return level
 
 
 class AppConfig(BaseModel):
     """Root application configuration."""
+
+    model_config = ConfigDict(extra="forbid")
 
     mattermost: MattermostConfig
     llm: LLMConfig

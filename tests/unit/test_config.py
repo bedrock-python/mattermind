@@ -263,3 +263,108 @@ def test__load_config__no_output_section__applies_default_format(config_file: Pa
     result = load_config(config_path=config_file)
 
     assert result.output.format == "markdown"
+
+
+# ------------------------------------------------------------------ #
+# Interpolation error message                                         #
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.unit
+def test__load_config__interpolated_required_var_missing__hint_names_the_variable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("REQUIRED_VAR", raising=False)
+    data: dict[str, Any] = {
+        "mattermost": {
+            "url": "https://mm.example.com",
+            "token": "${REQUIRED_VAR}",
+            "team": "eng",
+        },
+        "llm": {"api_key": "sk-test"},
+    }
+    p = _write_yaml(tmp_path, data)
+
+    with pytest.raises(ConfigError) as excinfo:
+        load_config(config_path=p)
+
+    assert "${REQUIRED_VAR:-default}" in str(excinfo.value)
+
+
+# ------------------------------------------------------------------ #
+# Unknown keys                                                        #
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.unit
+def test__load_config__misspelled_key_in_section__raises_config_error(
+    tmp_path: Path, base_config_data: dict[str, Any]
+) -> None:
+    base_config_data["mattermost"]["tiemout_seconds"] = 60
+    p = _write_yaml(tmp_path, base_config_data)
+
+    with pytest.raises(ConfigError, match="tiemout_seconds"):
+        load_config(config_path=p)
+
+
+@pytest.mark.unit
+def test__load_config__unknown_top_level_section__raises_config_error(
+    tmp_path: Path, base_config_data: dict[str, Any]
+) -> None:
+    base_config_data["outupt"] = {"format": "plain"}
+    p = _write_yaml(tmp_path, base_config_data)
+
+    with pytest.raises(ConfigError, match="outupt"):
+        load_config(config_path=p)
+
+
+# ------------------------------------------------------------------ #
+# output.format                                                       #
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.unit
+def test__load_config__output_format_json__is_accepted(tmp_path: Path, base_config_data: dict[str, Any]) -> None:
+    base_config_data["output"] = {"format": "json"}
+    p = _write_yaml(tmp_path, base_config_data)
+
+    result = load_config(config_path=p)
+
+    assert result.output.format == "json"
+
+
+@pytest.mark.unit
+def test__load_config__unknown_output_format__raises_config_error(
+    tmp_path: Path, base_config_data: dict[str, Any]
+) -> None:
+    base_config_data["output"] = {"format": "markdwon"}
+    p = _write_yaml(tmp_path, base_config_data)
+
+    with pytest.raises(ConfigError, match="output -> format"):
+        load_config(config_path=p)
+
+
+# ------------------------------------------------------------------ #
+# logging.level                                                       #
+# ------------------------------------------------------------------ #
+
+
+@pytest.mark.unit
+def test__load_config__lowercase_logging_level__is_normalised(tmp_path: Path, base_config_data: dict[str, Any]) -> None:
+    base_config_data["logging"] = {"level": "debug"}
+    p = _write_yaml(tmp_path, base_config_data)
+
+    result = load_config(config_path=p)
+
+    assert result.logging.level == "DEBUG"
+
+
+@pytest.mark.unit
+def test__load_config__unknown_logging_level__raises_config_error(
+    tmp_path: Path, base_config_data: dict[str, Any]
+) -> None:
+    base_config_data["logging"] = {"level": "chatty"}
+    p = _write_yaml(tmp_path, base_config_data)
+
+    with pytest.raises(ConfigError, match="Unknown logging level"):
+        load_config(config_path=p)
