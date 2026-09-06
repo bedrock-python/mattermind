@@ -210,6 +210,7 @@ class AgentLoop:
             elapsed_seconds=elapsed,
             incomplete=state.incomplete,
             permalinks=permalinks,
+            explored_threads=state.explored_threads,
         )
 
     def _ask_continue(self) -> bool:
