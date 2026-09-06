@@ -8,7 +8,6 @@ import uuid
 from pathlib import Path
 from typing import ClassVar
 
-from rich.console import Console
 from rich.console import Console as RichConsole
 from textual import work
 from textual.app import App, ComposeResult
@@ -18,11 +17,10 @@ from textual.css.query import NoMatches
 from textual.widgets import Input, Static
 
 from mattermind.agent.loop import AgentLoop
-from mattermind.config.loader import ConfigError, load_config
+from mattermind.config.loader import load_config
 from mattermind.config.models import AppConfig
 from mattermind.mattermost.client import MattermostClient
 from mattermind.models import AskResult, TokenUsage
-from mattermind.ui.errors import error_panel
 
 from .widgets import (
     AgentActivityLog,
@@ -319,18 +317,13 @@ class MattermindApp(App[None]):
 
 
 def run_tui(config_path: Path | None = None) -> None:
-    """Load config and launch the TUI. Called from the CLI 'chat' command."""
-    try:
-        config = load_config(config_path=config_path)
-    except ConfigError as exc:
-        console = Console()
-        error_panel(
-            console,
-            "Configuration Error",
-            str(exc),
-            hint="Run `mattermind init` to set up your config interactively.",
-        )
-        return
+    """Load config and launch the TUI. Called from the CLI 'chat' command.
+
+    Raises:
+        ConfigError: the configuration is missing or invalid. The caller decides
+            how to report it — the CLI renders a panel and exits 1.
+    """
+    config = load_config(config_path=config_path)
 
     app = MattermindApp(config=config, config_path=config_path)
     app.run()

@@ -1,14 +1,17 @@
 """Typer CLI application for mattermind."""
 
 import asyncio
+import logging
 import sys
 import traceback
 from pathlib import Path
 from typing import Annotated, Any
 
+import httpx
 import orjson
 import typer
 import yaml
+from openai import AsyncOpenAI
 from rich.console import Console
 from rich.prompt import IntPrompt, Prompt
 from rich.table import Table
@@ -28,7 +31,9 @@ from mattermind.ui.renderer import (
     render_query_panel,
     render_status,
     render_summary,
+    render_thread_tree,
 )
+from mattermind.ui.theme import CONSOLE, THEME
 
 # ------------------------------------------------------------------ #
 # Typer app                                                           #
@@ -45,16 +50,55 @@ app = typer.Typer(
 config_app = typer.Typer(name="config", help="Configuration management commands.")
 app.add_typer(config_app)
 
-# Shared context object (populated by the callback)
+# Shared context object (populated by the callback and by every command)
 _ctx = AppContext()
+
+# ------------------------------------------------------------------ #
+# Global flags                                                        #
+# ------------------------------------------------------------------ #
+# The same five options are declared on the application callback and on every
+# command, so they are accepted both before and after the subcommand:
+#     mattermind --json ask "..."
+#     mattermind ask "..." --json
+
+ConfigOption = Annotated[Path | None, typer.Option("--config", "-c", help="Path to config YAML file.")]
+VerboseOption = Annotated[bool, typer.Option("--verbose", "-v", help="Enable verbose output.")]
+QuietOption = Annotated[bool, typer.Option("--quiet", "-q", help="Print the answer only, without the UI chrome.")]
+JsonOption = Annotated[bool, typer.Option("--json", help="Output result as JSON (machine-readable).")]
+NoColorOption = Annotated[bool, typer.Option("--no-color", help="Disable colour output.")]
+
+
+def _apply_global_flags(
+    config_path: Path | None = None,
+    verbose: bool = False,
+    quiet: bool = False,
+    output_json: bool = False,
+    no_color: bool = False,
+) -> None:
+    """Merge global flags into the shared context, wherever they were given."""
+    if config_path is not None:
+        _ctx.config_path = config_path
+    _ctx.verbose = _ctx.verbose or verbose
+    _ctx.quiet = _ctx.quiet or quiet
+    _ctx.json_output = _ctx.json_output or output_json
+    _ctx.no_color = _ctx.no_color or no_color
+
+    # Keep the theme: the panels below print styles like "error" by name.
+    _ctx.console = Console(no_color=True, theme=THEME) if _ctx.no_color else CONSOLE
+
+
+def _configure_logging(level: str) -> None:
+    """Apply ``logging.level`` from the configuration to the root logger."""
+    logging.basicConfig(
+        level=level.upper(),
+        format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
+        stream=sys.stderr,
+        force=True,
+    )
 
 
 def _get_console() -> Console:
-    """Return a console that respects --no-color and --quiet flags."""
-    if _ctx.no_color:
-        return Console(no_color=True)
-    if _ctx.quiet:
-        return Console(quiet=True)
+    """Return the console to print with (respects --no-color)."""
     return _ctx.console
 
 
@@ -65,29 +109,14 @@ def _get_console() -> Console:
 
 @app.callback()
 def main_callback(
-    config: Annotated[
-        Path | None,
-        typer.Option("--config", "-c", help="Path to config YAML file."),
-    ] = None,
-    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Enable verbose output.")] = False,
-    quiet: Annotated[bool, typer.Option("--quiet", "-q", help="Suppress banner and status lines.")] = False,
-    output_json: Annotated[
-        bool,
-        typer.Option("--json", help="Output result as JSON (machine-readable)."),
-    ] = False,
-    no_color: Annotated[bool, typer.Option("--no-color", help="Disable colour output.")] = False,
+    config: ConfigOption = None,
+    verbose: VerboseOption = False,
+    quiet: QuietOption = False,
+    output_json: JsonOption = False,
+    no_color: NoColorOption = False,
 ) -> None:
     """Mattermind — ask questions about your Mattermost workspace."""
-    _ctx.config_path = config
-    _ctx.verbose = verbose
-    _ctx.quiet = quiet
-    _ctx.json_output = output_json
-    _ctx.no_color = no_color
-
-    if no_color:
-        _ctx.console = Console(no_color=True)
-    elif quiet:
-        _ctx.console = Console(quiet=True)
+    _apply_global_flags(config, verbose, quiet, output_json, no_color)
 
 
 # ------------------------------------------------------------------ #
@@ -106,8 +135,14 @@ def ask(
     llm_base_url: Annotated[str | None, typer.Option("--llm-base-url", help="LLM API base URL.")] = None,
     llm_api_key: Annotated[str | None, typer.Option("--llm-api-key", help="LLM API key.")] = None,
     model: Annotated[str | None, typer.Option("--model", help="LLM model name.")] = None,
+    config_path: ConfigOption = None,
+    verbose: VerboseOption = False,
+    quiet: QuietOption = False,
+    output_json: JsonOption = False,
+    no_color: NoColorOption = False,
 ) -> None:
     """Ask a question about your Mattermost workspace."""
+    _apply_global_flags(config_path, verbose, quiet, output_json, no_color)
     console = _get_console()
 
     if not _ctx.quiet and not _ctx.json_output:
@@ -149,6 +184,8 @@ def ask(
         )
         raise typer.Exit(1) from exc
 
+    _configure_logging(config.logging.level)
+
     if not _ctx.quiet and not _ctx.json_output:
         render_query_panel(console, query)
 
@@ -163,17 +200,19 @@ def ask(
         error_panel(console, "Unexpected Error", str(exc), hint="Run with --verbose for a full traceback.")
         raise typer.Exit(1) from exc
 
-    if _ctx.json_output:
+    if _ctx.json_output or config.output.format == "json":
         sys.stdout.write(result.model_dump_json(indent=2) + "\n")
         return
 
-    render_answer(console, result.answer, fmt=config.output.format)
+    # --quiet means the answer and nothing else.
+    render_answer(console, result.answer, fmt="plain" if _ctx.quiet else config.output.format)
 
-    if config.output.show_thread_tree and result.threads_explored > 0:
-        # We can't easily pass state back through asyncio.run, so we use the
-        # explored_threads embedded in the AskResult permalinks for display.
-        # For the full tree we'd need to propagate state — instead, render simple list.
+    if _ctx.quiet:
+        return
+
+    if config.output.show_thread_tree and result.explored_threads:
         console.print()
+        render_thread_tree(console, result.explored_threads)
 
     render_summary(
         console,
@@ -215,8 +254,14 @@ def teams(
     mm_token: Annotated[str | None, typer.Option("--mm-token", help="Personal access token.")] = None,
     mm_login: Annotated[str | None, typer.Option("--mm-login", help="Mattermost login.")] = None,
     mm_password: Annotated[str | None, typer.Option("--mm-password", help="Mattermost password.")] = None,
+    config_path: ConfigOption = None,
+    verbose: VerboseOption = False,
+    quiet: QuietOption = False,
+    output_json: JsonOption = False,
+    no_color: NoColorOption = False,
 ) -> None:
     """List Mattermost teams available to the current user."""
+    _apply_global_flags(config_path, verbose, quiet, output_json, no_color)
     console = _get_console()
 
     overrides: dict[str, Any] = {}
@@ -237,6 +282,8 @@ def teams(
     except ConfigError as exc:
         error_panel(console, "Configuration Error", str(exc))
         raise typer.Exit(1) from exc
+
+    _configure_logging(config.logging.level)
 
     try:
         result = asyncio.run(_run_teams(config))
@@ -311,6 +358,11 @@ async def _run_teams(config: AppConfig) -> list[Any]:
 @app.command()
 def login(
     mm_url: Annotated[str | None, typer.Option("--mm-url", help="Mattermost server URL.")] = None,
+    config_path: ConfigOption = None,
+    verbose: VerboseOption = False,
+    quiet: QuietOption = False,
+    output_json: JsonOption = False,
+    no_color: NoColorOption = False,
 ) -> None:
     """Save a Mattermost session token to config.
 
@@ -319,6 +371,7 @@ def login(
     2. Open DevTools (F12) -> Application -> Cookies -> your MM domain.
     3. Copy the value of MMAUTHTOKEN.
     """
+    _apply_global_flags(config_path, verbose, quiet, output_json, no_color)
     console = _get_console()
 
     console.print(
@@ -373,8 +426,15 @@ def login(
 
 
 @app.command()
-def init() -> None:
+def init(
+    config_path: ConfigOption = None,
+    verbose: VerboseOption = False,
+    quiet: QuietOption = False,
+    output_json: JsonOption = False,
+    no_color: NoColorOption = False,
+) -> None:
     """Interactively create a mattermind config file."""
+    _apply_global_flags(config_path, verbose, quiet, output_json, no_color)
     console = _get_console()
     try:
         run_wizard(console)
@@ -389,11 +449,29 @@ def init() -> None:
 
 
 @app.command()
-def chat() -> None:
+def chat(
+    config_path: ConfigOption = None,
+    verbose: VerboseOption = False,
+    quiet: QuietOption = False,
+    output_json: JsonOption = False,
+    no_color: NoColorOption = False,
+) -> None:
     """Launch the interactive TUI chat interface."""
     from mattermind.ui.tui import run_tui
 
-    run_tui(config_path=_ctx.config_path)
+    _apply_global_flags(config_path, verbose, quiet, output_json, no_color)
+    console = _get_console()
+
+    try:
+        run_tui(config_path=_ctx.config_path)
+    except ConfigError as exc:
+        error_panel(
+            console,
+            "Configuration Error",
+            str(exc),
+            hint="Run `mattermind init` to set up your config interactively.",
+        )
+        raise typer.Exit(1) from exc
 
 
 # ------------------------------------------------------------------ #
@@ -402,8 +480,15 @@ def chat() -> None:
 
 
 @app.command()
-def version() -> None:
+def version(
+    config_path: ConfigOption = None,
+    verbose: VerboseOption = False,
+    quiet: QuietOption = False,
+    output_json: JsonOption = False,
+    no_color: NoColorOption = False,
+) -> None:
     """Print the mattermind version and exit."""
+    _apply_global_flags(config_path, verbose, quiet, output_json, no_color)
     console = _get_console()
     console.print(f"mattermind [primary]{__version__}[/primary]")
 
@@ -414,8 +499,15 @@ def version() -> None:
 
 
 @config_app.command("show")
-def config_show() -> None:
+def config_show(
+    config_path: ConfigOption = None,
+    verbose: VerboseOption = False,
+    quiet: QuietOption = False,
+    output_json: JsonOption = False,
+    no_color: NoColorOption = False,
+) -> None:
     """Print the resolved configuration (with secrets masked)."""
+    _apply_global_flags(config_path, verbose, quiet, output_json, no_color)
     console = _get_console()
 
     try:
@@ -453,16 +545,75 @@ def config_show() -> None:
 
 
 @config_app.command("validate")
-def config_validate() -> None:
-    """Validate the configuration and print a success/failure message."""
+def config_validate(
+    config_path: ConfigOption = None,
+    verbose: VerboseOption = False,
+    quiet: QuietOption = False,
+    output_json: JsonOption = False,
+    no_color: NoColorOption = False,
+) -> None:
+    """Validate the configuration and check both endpoints are reachable."""
+    _apply_global_flags(config_path, verbose, quiet, output_json, no_color)
     console = _get_console()
 
     try:
-        load_config(config_path=_ctx.config_path)
-        console.print("[success]Configuration is valid.[/success]")
+        config = load_config(config_path=_ctx.config_path)
     except ConfigError as exc:
         error_panel(console, "Invalid Configuration", str(exc))
         raise typer.Exit(1) from exc
+
+    _configure_logging(config.logging.level)
+    console.print("[success]Configuration is valid.[/success]")
+
+    (mm_ok, mm_detail), (llm_ok, llm_detail) = asyncio.run(_check_endpoints(config))
+
+    for label, ok, detail in (
+        (f"Mattermost {config.mattermost.url}", mm_ok, mm_detail),
+        (f"LLM {config.llm.base_url}", llm_ok, llm_detail),
+    ):
+        if ok:
+            console.print(f"[success]OK[/success]      {label}")
+        else:
+            console.print(f"[error]FAILED[/error]  {label} — {detail}")
+
+    if not (mm_ok and llm_ok):
+        raise typer.Exit(1)
+
+
+async def _check_endpoints(config: AppConfig) -> tuple[tuple[bool, str], tuple[bool, str]]:
+    """Check Mattermost and the LLM endpoint in one event loop."""
+    return await _check_mattermost(config), await _check_llm(config)
+
+
+async def _check_mattermost(config: AppConfig) -> tuple[bool, str]:
+    """Return whether Mattermost answers as the configured user."""
+    try:
+        async with MattermostClient(config.mattermost) as client:
+            if await client.validate_connection():
+                return True, ""
+            return False, "the server is unreachable, or it rejected the credentials"
+    except Exception as exc:
+        return False, str(exc)
+
+
+async def _check_llm(config: AppConfig) -> tuple[bool, str]:
+    """Return whether the LLM endpoint answers a model listing."""
+    llm = AsyncOpenAI(
+        base_url=config.llm.base_url,
+        api_key=config.llm.api_key,
+        http_client=httpx.AsyncClient(
+            verify=config.llm.verify_ssl,
+            timeout=config.llm.request_timeout_seconds,
+        ),
+    )
+    try:
+        await llm.models.list()
+    except Exception as exc:
+        return False, str(exc)
+    else:
+        return True, ""
+    finally:
+        await llm.close()
 
 
 # ------------------------------------------------------------------ #
