@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import httpx
+import httpx2
 import pytest
 import respx
 import yaml
@@ -250,20 +253,40 @@ def test__chat__missing_config__reports_the_error(tmp_path: Path) -> None:
 # ------------------------------------------------------------------ #
 
 
-def _mock_endpoints(mm_status: int = 200, llm_status: int = 200) -> tuple[respx.Route, respx.Route]:
-    mm_route = respx.get("https://mm.example.com/api/v4/users/me").mock(
-        return_value=httpx.Response(mm_status, json={"id": "me001"})
-    )
-    llm_route = respx.get("https://llm.example.com/v1/models").mock(
-        return_value=httpx.Response(llm_status, json={"object": "list", "data": []})
-    )
-    return mm_route, llm_route
+class _Httpx2Route:
+    """Answers one httpx2 endpoint and remembers whether it was hit."""
+
+    def __init__(self, path: str, status: int, payload: dict[str, Any]) -> None:
+        self._path = path
+        self._status = status
+        self._payload = payload
+        self.called = False
+
+    def handler(self, request: httpx2.Request) -> httpx2.Response:
+        if request.url.path != self._path:
+            return httpx2.Response(404, request=request)
+        self.called = True
+        return httpx2.Response(self._status, request=request, json=self._payload)
+
+
+@contextmanager
+def _mock_endpoints(mm_status: int = 200, llm_status: int = 200) -> Iterator[tuple[respx.Route, _Httpx2Route]]:
+    """Mock Mattermost through respx and the LLM at the httpx2 transport, which respx cannot intercept."""
+    llm_route = _Httpx2Route("/v1/models", llm_status, {"object": "list", "data": []})
+
+    def llm_http_client(**kwargs: Any) -> httpx2.AsyncClient:
+        return httpx2.AsyncClient(transport=httpx2.MockTransport(llm_route.handler), **kwargs)
+
+    with respx.mock, patch.object(cli_app, "DefaultAsyncHttpx2Client", llm_http_client):
+        mm_route = respx.get("https://mm.example.com/api/v4/users/me").mock(
+            return_value=httpx.Response(mm_status, json={"id": "me001"})
+        )
+        yield mm_route, llm_route
 
 
 @pytest.mark.unit
 def test__config_validate__both_endpoints_reachable__exit_code_is_zero(config_file: Path) -> None:
-    with respx.mock:
-        _mock_endpoints()
+    with _mock_endpoints():
         result = runner.invoke(cli_app.app, ["config", "validate", "--config", str(config_file)])
 
     assert result.exit_code == 0
@@ -271,8 +294,7 @@ def test__config_validate__both_endpoints_reachable__exit_code_is_zero(config_fi
 
 @pytest.mark.unit
 def test__config_validate__valid_config__calls_mattermost(config_file: Path) -> None:
-    with respx.mock:
-        mm_route, _ = _mock_endpoints()
+    with _mock_endpoints() as (mm_route, _):
         runner.invoke(cli_app.app, ["config", "validate", "--config", str(config_file)])
 
     assert mm_route.called
@@ -280,8 +302,7 @@ def test__config_validate__valid_config__calls_mattermost(config_file: Path) -> 
 
 @pytest.mark.unit
 def test__config_validate__valid_config__calls_the_llm_endpoint(config_file: Path) -> None:
-    with respx.mock:
-        _, llm_route = _mock_endpoints()
+    with _mock_endpoints() as (_, llm_route):
         runner.invoke(cli_app.app, ["config", "validate", "--config", str(config_file)])
 
     assert llm_route.called
@@ -289,8 +310,7 @@ def test__config_validate__valid_config__calls_the_llm_endpoint(config_file: Pat
 
 @pytest.mark.unit
 def test__config_validate__mattermost_rejects_the_token__exit_code_is_one(config_file: Path) -> None:
-    with respx.mock:
-        _mock_endpoints(mm_status=401)
+    with _mock_endpoints(mm_status=401):
         result = runner.invoke(cli_app.app, ["config", "validate", "--config", str(config_file)])
 
     assert result.exit_code == 1
@@ -298,8 +318,7 @@ def test__config_validate__mattermost_rejects_the_token__exit_code_is_one(config
 
 @pytest.mark.unit
 def test__config_validate__llm_rejects_the_key__exit_code_is_one(config_file: Path) -> None:
-    with respx.mock:
-        _mock_endpoints(llm_status=401)
+    with _mock_endpoints(llm_status=401):
         result = runner.invoke(cli_app.app, ["config", "validate", "--config", str(config_file)])
 
     assert result.exit_code == 1
