@@ -7,11 +7,10 @@ import traceback
 from pathlib import Path
 from typing import Annotated, Any
 
-import httpx
 import orjson
 import typer
 import yaml
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, DefaultAsyncHttpx2Client
 from rich.console import Console
 from rich.prompt import IntPrompt, Prompt
 from rich.table import Table
@@ -601,7 +600,7 @@ async def _check_llm(config: AppConfig) -> tuple[bool, str]:
     llm = AsyncOpenAI(
         base_url=config.llm.base_url,
         api_key=config.llm.api_key,
-        http_client=httpx.AsyncClient(
+        http_client=DefaultAsyncHttpx2Client(
             verify=config.llm.verify_ssl,
             timeout=config.llm.request_timeout_seconds,
         ),
