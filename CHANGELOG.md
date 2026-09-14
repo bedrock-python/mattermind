@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/bedrock-python/mattermind/compare/mattermind-v0.2.0...mattermind-v0.2.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **deps:** bump openai from 2.36.0 to 3.13.0 and use its httpx2 client ([dabe227](https://github.com/bedrock-python/mattermind/commit/dabe227cea1133ba28ce39b5255d8d14708aab15))
+
 ## [0.2.0](https://github.com/bedrock-python/mattermind/compare/mattermind-v0.1.1...mattermind-v0.2.0) (2026-09-06)
 
 
