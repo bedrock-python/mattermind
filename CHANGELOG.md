@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/bedrock-python/mattermind/compare/mattermind-v0.2.1...mattermind-v0.2.2) (2026-10-07)
+
+
+### Bug Fixes
+
+* ship py.typed and point the changelog link at master ([#43](https://github.com/bedrock-python/mattermind/issues/43)) ([9547230](https://github.com/bedrock-python/mattermind/commit/9547230f63433baf1b9070a6df5e98ad2556a0ed))
+
 ## [0.2.1](https://github.com/bedrock-python/mattermind/compare/mattermind-v0.2.0...mattermind-v0.2.1) (2026-09-14)
 
 
