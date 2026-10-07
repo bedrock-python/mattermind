@@ -7,13 +7,13 @@ Thank you for your interest in contributing to **mattermind**!
 ```bash
 git clone https://github.com/bedrock-python/mattermind
 cd mattermind
-uv sync
-pre-commit install
+uv sync --extra dev
+uv run pre-commit install --hook-type pre-commit --hook-type commit-msg
 ```
 
 ## Workflow
 
-1. Create a branch: `feat/ISSUE-123__short_description`
+1. Create a branch: `<type>/<short-description>`, with a type from the commit convention below, such as `fix/agents-page-findings`
 2. Make changes, write tests
 3. Run checks: `make check && make test`
 4. Commit using [Conventional Commits](https://www.conventionalcommits.org/): `feat(agent): add mm_search pagination`
