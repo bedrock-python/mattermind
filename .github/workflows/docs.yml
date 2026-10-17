@@ -10,13 +10,19 @@ permissions:
   pages: write
   id-token: write
 
+# Two quick pushes must not race each other onto Pages.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
-      - run: uv sync --no-dev --extra docs
+      # --locked: fail when uv.lock is out of date with pyproject.toml.
+      - run: uv sync --locked --no-dev --extra docs
       - run: cp CHANGELOG.md docs/changelog.md
       - run: uv run zensical build --clean
       - run: uv run python scripts/emit_markdown.py
